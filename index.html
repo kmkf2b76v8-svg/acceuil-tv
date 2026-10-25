@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Accueil TV</title>
+<style>
+:root{--ink:#fff;--dim:rgba(255,255,255,.64);--night:#080c1f;color-scheme:dark;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+*,*::before,*::after{box-sizing:inherit;margin:0}
+html,body{height:100%;background:var(--night);color:var(--ink);font-family:-apple-system,"SF Pro Display","Helvetica Neue",Helvetica,Arial,sans-serif;overflow:hidden}
+.bg{position:fixed;top:0;left:0;right:0;bottom:0;background:radial-gradient(60vw 45vw at 20% 15%,#2b3a9a 0%,transparent 60%),radial-gradient(55vw 45vw at 85% 80%,#6a2f8f 0%,transparent 62%),radial-gradient(40vw 30vw at 60% 20%,#1c6a8a 0%,transparent 60%),var(--night);background-size:140% 140%;animation:drift 40s ease-in-out infinite alternate}
+@keyframes drift{from{background-position:0% 0%}to{background-position:100% 100%}}
+.stage{position:relative;height:100%;padding:6vw 7vw 0}
+.clock{font-size:11vw;font-weight:200;letter-spacing:-.02em;line-height:1}
+.date{margin-top:1vw;font-size:2.4vw;color:var(--dim)}
+.row{position:absolute;left:0;top:56%;display:flex;white-space:nowrap;transition:transform .45s cubic-bezier(.22,.8,.24,1)}
+.tile{flex:0 0 auto;width:17vw;height:10.2vw;margin-right:2vw;border-radius:1.3vw;position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:2.3vw;letter-spacing:-.01em;box-shadow:0 .8vw 2vw rgba(0,0,0,.35);transition:transform .3s,box-shadow .3s;cursor:pointer}
+.tile::after{content:"";position:absolute;top:0;left:0;right:0;bottom:0;background:linear-gradient(135deg,rgba(255,255,255,.28),rgba(255,255,255,0) 45%);opacity:.45;transition:opacity .3s}
+.tile.on{transform:scale(1.14) translateY(-.6vw);box-shadow:0 2.4vw 4.5vw rgba(0,0,0,.6)}
+.tile.on::after{opacity:1}
+.label{position:absolute;left:0;right:0;bottom:12vh;text-align:center;font-size:2vw;font-weight:600}
+.hint{position:absolute;left:0;right:0;bottom:4vh;text-align:center;font-size:1.4vw;color:var(--dim)}
+.toast{position:fixed;left:50%;bottom:8vh;transform:translateX(-50%);background:rgba(20,24,48,.88);padding:.8vw 1.8vw;border-radius:99px;font-size:1.6vw;opacity:0;transition:opacity .25s;white-space:nowrap}
+.toast.show{opacity:1}
+.diag{position:fixed;left:2vw;top:2vw;font-size:1.3vw;color:var(--dim);display:none;max-width:90vw}
+.diag.show{display:block}
+@media (max-aspect-ratio:1/1){
+.stage{padding:14vw 8vw 0}.clock{font-size:24vw}.date{font-size:5vw;margin-top:2vw}
+.tile{width:40vw;height:24vw;margin-right:4vw;border-radius:3vw;font-size:5.4vw}
+.label{font-size:4.6vw}.hint{font-size:3vw}.toast{font-size:3.6vw;padding:1.6vw 4vw}
+}
+@media (prefers-reduced-motion:reduce){.bg{animation:none}.row,.tile{transition:none}}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="stage">
+  <div class="clock" id="clock">00:00</div>
+  <div class="date" id="date"></div>
+  <div class="row" id="row"></div>
+  <div class="label" id="label"></div>
+  <div class="hint">Flèches pour naviguer, OK pour ouvrir</div>
+</div>
+<div class="diag" id="diag"></div>
+<div class="toast" id="toast"></div>
+<script>
+(function(){
+var APPS=[
+ {id:'youtube',name:'YouTube',c:['#ff2d4d','#8f0019'],tizen:'111299001912',url:'https://www.youtube.com/tv'},
+ {id:'netflix',name:'Netflix',c:['#e50914','#4d0509'],tizen:'3201907018807',url:'https://www.netflix.com'},
+ {id:'prime',name:'Prime Video',c:['#00a8e1','#0b3a66'],tizen:'3201910019365',url:'https://www.primevideo.com'},
+ {id:'disney',name:'Disney+',c:['#2a5bff','#0a1f5c'],tizen:'3201901017640',url:'https://www.disneyplus.com'},
+ {id:'appletv',name:'Apple TV',c:['#4a4a4f','#0b0b0c'],tizen:'3201807016597',url:'https://tv.apple.com'},
+ {id:'spotify',name:'Spotify',c:['#1ed760','#0b5a2a'],tizen:'3201606009684',url:'https://open.spotify.com'},
+ {id:'canal',name:'canal+',c:['#3a3a3f','#000000'],url:'https://www.canalplus.com'}
+];
+var KEY='accueil-tv:usage',usage={};
+try{usage=JSON.parse(localStorage.getItem(KEY)||'{}')||{};}catch(e){usage={};}
+var order=APPS.map(function(a,i){return{a:a,i:i};}).sort(function(x,y){
+ return (usage[y.a.id]||0)-(usage[x.a.id]||0)||x.i-y.i;}).map(function(o){return o.a;});
+var row=document.getElementById('row'),label=document.getElementById('label'),
+    toast=document.getElementById('toast'),clock=document.getElementById('clock'),
+    dateEl=document.getElementById('date'),cur=0,tt;
+var framed=window.top!==window.self;
+function say(s){toast.textContent=s;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(function(){toast.classList.remove('show');},1800);}
+function focusTile(n){
+ cur=Math.max(0,Math.min(order.length-1,n));
+ for(var i=0;i<row.children.length;i++){row.children[i].classList.toggle('on',i===cur);}
+ var t=row.children[cur];
+ row.style.transform='translateX('+(window.innerWidth/2-(t.offsetLeft+t.offsetWidth/2))+'px)';
+ label.textContent=order[cur].name;
+}
+function launch(a){
+ usage[a.id]=(usage[a.id]||0)+1;
+ try{localStorage.setItem(KEY,JSON.stringify(usage));}catch(e){}
+ say(framed?'Aperçu : ouvrirait '+a.name:'Ouverture de '+a.name+'…');
+ if(framed)return;
+ var web=function(){if(a.url){location.href=a.url;}};
+ try{if(window.tizen&&tizen.application&&a.tizen){tizen.application.launch(a.tizen,function(){},web);return;}}catch(e){}
+ web();
+}
+order.forEach(function(a,n){
+ var t=document.createElement('div');
+ t.className='tile';t.textContent=a.name;
+ t.style.background='linear-gradient(150deg,'+a.c[0]+','+a.c[1]+')';
+ t.onclick=function(){if(cur===n){launch(a);}else{focusTile(n);}};
+ row.appendChild(t);
+});
+document.addEventListener('keydown',function(e){
+ var k=e.keyCode;
+ if(k===37){focusTile(cur-1);e.preventDefault();}
+ else if(k===39){focusTile(cur+1);e.preventDefault();}
+ else if(k===13){launch(order[cur]);}
+ else if(k===38){var d=document.getElementById('diag');d.textContent='API Samsung : '+(window.tizen&&tizen.application?'oui':'non')+' | '+navigator.userAgent.slice(0,90);d.classList.toggle('show');}
+});
+function tick(){
+ var d=new Date();
+ clock.textContent=('0'+d.getHours()).slice(-2)+':'+('0'+d.getMinutes()).slice(-2);
+ var s=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+ dateEl.textContent=s.charAt(0).toUpperCase()+s.slice(1);
+}
+tick();setInterval(tick,1000);
+window.addEventListener('resize',function(){focusTile(cur);});
+window.addEventListener('load',function(){focusTile(0);});
+focusTile(0);
+})();
+</script>
+</body>
+</html>
